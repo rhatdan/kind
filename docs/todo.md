@@ -29,7 +29,7 @@ A non-exhaustive list of tasks (in no-particular order) includes:
   - [x] node lifecycle hooks
 - [ ] more advanced network configuration (not docker0)
 - [ ] support for other CRI within the "node" containers (containerd, cri-o)
-- [ ] move all docker functionality into a common package (`pkg/docker`) [WIP]
+- [ ] move all container engine functionality into a common package (`pkg/container`) [WIP]
  - [ ] potentially move this to using the docker client library
 - [x] log dumping functionality / cli commands
   - [ ] support audit logging

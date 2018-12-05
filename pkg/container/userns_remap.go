@@ -14,13 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package docker
+package container
 
 import (
+	"strings"
+
 	"sigs.k8s.io/kind/pkg/exec"
 )
 
-// Save saves image to dest, as in `docker save`
-func Save(image, dest string) error {
-	return exec.Command("docker", "save", "-o", dest, image).Run()
+// UsernsRemap checks if userns-remap is enabled in dockerd
+func UsernsRemap() bool {
+	cmd := exec.Command(Engine, "info", "--format", "'{{json .SecurityOptions}}'")
+	lines, err := exec.CombinedOutputLines(cmd)
+	if err != nil {
+		return false
+	}
+	if len(lines) > 0 {
+		if strings.Contains(lines[0], "name=userns") {
+			return true
+		}
+	}
+	return false
 }

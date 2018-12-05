@@ -21,7 +21,7 @@ import (
 	"net"
 
 	"github.com/pkg/errors"
-	"sigs.k8s.io/kind/pkg/docker"
+	"sigs.k8s.io/kind/pkg/container"
 )
 
 // FromID creates a node handle from the node (container's) ID
@@ -42,7 +42,7 @@ func getPort() (int, error) {
 	return port, nil
 }
 
-// CreateControlPlaneNode `docker run`s the node image, note that due to
+// CreateControlPlaneNode `ContainerEngine run`s the node image, note that due to
 // images/node/entrypoint being the entrypoint, this container will
 // effectively be paused until we call actuallyStartNode(...)
 func CreateControlPlaneNode(name, image, clusterLabel string) (handle *Node, port int, err error) {
@@ -55,7 +55,7 @@ func CreateControlPlaneNode(name, image, clusterLabel string) (handle *Node, por
 		// running containers in a container requires privileged
 		// NOTE: we could try to replicate this with --cap-add, and use less
 		// privileges, but this flag also changes some mounts that are necessary
-		// including some ones docker would otherwise do by default.
+		// including some ones the container engine would otherwise do by default.
 		// for now this is what we want. in the future we may revisit this.
 		"--privileged",
 		"--security-opt", "seccomp=unconfined", // also ignore seccomp
@@ -74,13 +74,13 @@ func CreateControlPlaneNode(name, image, clusterLabel string) (handle *Node, por
 		"--entrypoint=/usr/local/bin/entrypoint",
 	}
 
-	if docker.UsernsRemap() {
+	if container.UsernsRemap() {
 		// We need this argument in order to make this command work
 		// in systems that have userns-remap enabled on the docker daemon
 		runArgs = append(runArgs, "--userns=host")
 	}
 
-	id, err := docker.Run(
+	id, err := container.Run(
 		image,
 		runArgs,
 		[]string{
@@ -97,7 +97,7 @@ func CreateControlPlaneNode(name, image, clusterLabel string) (handle *Node, por
 		}
 	}
 	if err != nil {
-		return handle, 0, errors.Wrap(err, "docker run error")
+		return handle, 0, errors.Wrap(err, "container run error")
 	}
 	return handle, port, nil
 }

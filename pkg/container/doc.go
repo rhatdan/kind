@@ -14,18 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package docker
-
-import (
-	"sigs.k8s.io/kind/pkg/exec"
-)
-
-// Kill sends the named signal to the container
-func Kill(signal, containerNameOrID string) error {
-	cmd := exec.Command(
-		"docker", "kill",
-		"-s", signal,
-		containerNameOrID,
-	)
-	return cmd.Run()
-}
+// Package container contains helpers for working with container engines
+// This package has no stability guarantees whatsoever!
+package container

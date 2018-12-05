@@ -33,7 +33,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"sigs.k8s.io/kind/pkg/build/kube"
-	"sigs.k8s.io/kind/pkg/docker"
+	"sigs.k8s.io/kind/pkg/container"
 	"sigs.k8s.io/kind/pkg/exec"
 	"sigs.k8s.io/kind/pkg/fs"
 )
@@ -143,7 +143,7 @@ func (c *BuildContext) Build() (err error) {
 		return err
 	}
 
-	// then the perform the actual docker image build
+	// then the perform the actual container image build
 	return c.buildImage(buildDir)
 }
 
@@ -175,7 +175,7 @@ func (c *BuildContext) getBuiltImages() (sets.String, error) {
 	images := sets.NewString()
 	for src, dest := range bitPaths {
 		if imageRegex.MatchString(dest) {
-			tags, err := docker.GetArchiveTags(src)
+			tags, err := container.GetArchiveTags(src)
 			if err != nil {
 				return nil, err
 			}
@@ -188,9 +188,9 @@ func (c *BuildContext) getBuiltImages() (sets.String, error) {
 // BuildContainerLabelKey is applied to each build container
 const BuildContainerLabelKey = "io.k8s.sigs.kind.build"
 
-// DockerImageArchives is the path within the node image where image archives
+// ContainerImageArchives is the path within the node image where image archives
 // will be stored.
-const DockerImageArchives = "/kind/images"
+const ContainerImageArchives = "/kind/images"
 
 // private kube.InstallContext implementation, local to the image build
 type installContext struct {
@@ -206,7 +206,7 @@ func (ic *installContext) BasePath() string {
 
 func (ic *installContext) Run(command string, args ...string) error {
 	cmd := exec.Command(
-		"docker",
+		container.Engine,
 		append(
 			[]string{"exec", ic.containerID, command},
 			args...,
@@ -218,7 +218,7 @@ func (ic *installContext) Run(command string, args ...string) error {
 
 func (ic *installContext) CombinedOutputLines(command string, args ...string) ([]string, error) {
 	cmd := exec.Command(
-		"docker",
+		container.Engine,
 		append(
 			[]string{"exec", ic.containerID, command},
 			args...,
@@ -231,7 +231,7 @@ func (c *BuildContext) buildImage(dir string) error {
 	// build the image, tagged as tagImageAs, using the our tempdir as the context
 	log.Info("Starting image build ...")
 	// create build container
-	// NOTE: we are using docker run + docker commit so we can install
+	// NOTE: we are using ContainerEngine run + ContainerEngine commit so we can install
 	// debians without permanently copying them into the image.
 	// if docker gets proper squash support, we can rm them instead
 	// This also allows the KubeBit implementations to perform programmatic
@@ -240,7 +240,7 @@ func (c *BuildContext) buildImage(dir string) error {
 	// ensure we will delete it
 	if containerID != "" {
 		defer func() {
-			exec.Command("docker", "rm", "-f", "-v", containerID).Run()
+			exec.Command(container.Engine, "rm", "-f", "-v", containerID).Run()
 		}()
 	}
 	if err != nil {
@@ -250,7 +250,7 @@ func (c *BuildContext) buildImage(dir string) error {
 
 	// helper we will use to run "build steps"
 	execInBuild := func(command ...string) error {
-		cmd := exec.Command("docker",
+		cmd := exec.Command(container.Engine,
 			append(
 				[]string{"exec", containerID},
 				command...,
@@ -297,7 +297,7 @@ func (c *BuildContext) buildImage(dir string) error {
 	}
 
 	// Save the image changes to a new image
-	cmd := exec.Command("docker", "commit", containerID, c.image)
+	cmd := exec.Command(container.Engine, "commit", containerID, c.image)
 	exec.InheritOutput(cmd)
 	if err = cmd.Run(); err != nil {
 		log.Errorf("Image build Failed! %v", err)
@@ -319,7 +319,7 @@ func (c *BuildContext) prePullImages(dir, containerID string) error {
 
 	// helpers to run things in the build container
 	execInBuild := func(command ...string) error {
-		cmd := exec.Command("docker",
+		cmd := exec.Command(container.Engine,
 			append(
 				[]string{"exec", containerID},
 				command...,
@@ -329,7 +329,7 @@ func (c *BuildContext) prePullImages(dir, containerID string) error {
 		return cmd.Run()
 	}
 	combinedOutputLinesInBuild := func(command ...string) ([]string, error) {
-		cmd := exec.Command("docker",
+		cmd := exec.Command(container.Engine,
 			append(
 				[]string{"exec", containerID},
 				command...,
@@ -385,14 +385,14 @@ func (c *BuildContext) prePullImages(dir, containerID string) error {
 	for i, image := range requiredImages {
 		if !builtImages.Has(image) {
 			fmt.Printf("Pulling: %s\n", image)
-			err := docker.Pull(image, 2)
+			err := container.Pull(image, 2)
 			if err != nil {
 				return err
 			}
 			// TODO(bentheelder): generate a friendlier name
 			pullName := fmt.Sprintf("%d.tar", i)
 			pullTo := path.Join(imagesDir, pullName)
-			err = docker.Save(image, pullTo)
+			err = container.Save(image, pullTo)
 			if err != nil {
 				return err
 			}
@@ -401,17 +401,17 @@ func (c *BuildContext) prePullImages(dir, containerID string) error {
 	}
 
 	// Create the /kind/images directory inside the container.
-	if err = execInBuild("mkdir", "-p", DockerImageArchives); err != nil {
+	if err = execInBuild("mkdir", "-p", ContainerImageArchives); err != nil {
 		log.Errorf("Image build Failed! %v", err)
 		return err
 	}
-	movePulled = append(movePulled, DockerImageArchives)
+	movePulled = append(movePulled, ContainerImageArchives)
 	if err := execInBuild(movePulled...); err != nil {
 		return err
 	}
 	// make sure we own the tarballs
 	// TODO(bentheelder): someday we might need a different user ...
-	if err = execInBuild("chown", "-R", "root", DockerImageArchives); err != nil {
+	if err = execInBuild("chown", "-R", "root", ContainerImageArchives); err != nil {
 		log.Errorf("Image build Failed! %v", err)
 		return err
 	}
@@ -421,8 +421,8 @@ func (c *BuildContext) prePullImages(dir, containerID string) error {
 func (c *BuildContext) createBuildContainer(buildDir string) (id string, err error) {
 	// attempt to explicitly pull the image if it doesn't exist locally
 	// we don't care if this errors, we'll still try to run which also pulls
-	_, _ = docker.PullIfNotPresent(c.baseImage, 4)
-	id, err = docker.Run(
+	_, _ = container.PullIfNotPresent(c.baseImage, 4)
+	id, err = container.Run(
 		c.baseImage,
 		[]string{
 			"-d", // make the client exit while the container continues to run

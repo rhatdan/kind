@@ -35,12 +35,12 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/config"
 	"sigs.k8s.io/kind/pkg/cluster/kubeadm"
 	"sigs.k8s.io/kind/pkg/cluster/nodes"
-	"sigs.k8s.io/kind/pkg/docker"
+	"sigs.k8s.io/kind/pkg/container"
 	"sigs.k8s.io/kind/pkg/kustomize"
 	logutil "sigs.k8s.io/kind/pkg/log"
 )
 
-// Context is used to create / manipulate kubernetes-in-docker clusters
+// Context is used to create / manipulate kind clusters
 type Context struct {
 	name string
 }
@@ -53,7 +53,7 @@ type createContext struct {
 	retain bool // if we should retain nodes after failing to create
 }
 
-// similar to valid docker container names, but since we will prefix
+// similar to valid container names, but since we will prefix
 // and suffix this name, we can relax it a little
 // see NewContext() for usage
 // https://godoc.org/github.com/docker/docker/daemon/names#pkg-constants
@@ -91,7 +91,7 @@ func (c *Context) Validate() error {
 	return nil
 }
 
-// ClusterLabel returns the docker object label that will be applied
+// ClusterLabel returns the container object label that will be applied
 // to cluster "node" containers
 func (c *Context) ClusterLabel() string {
 	return fmt.Sprintf("%s=%s", consts.ClusterLabelKey, c.name)
@@ -120,7 +120,7 @@ func (c *Context) KubeConfigPath() string {
 	return filepath.Join(configDir, fileName)
 }
 
-// Create provisions and starts a kubernetes-in-docker cluster
+// Create provisions and starts a kind cluster
 func (c *Context) Create(cfg *config.Config, retain bool) error {
 	// validate config first
 	if err := cfg.Validate(); err != nil {
@@ -146,7 +146,7 @@ func (c *Context) Create(cfg *config.Config, retain bool) error {
 
 	// attempt to explicitly pull the image if it doesn't exist locally
 	// we don't care if this errors, we'll still try to run which also pulls
-	_, _ = docker.PullIfNotPresent(cfg.Image, 4)
+	_, _ = container.PullIfNotPresent(cfg.Image, 4)
 
 	// TODO(bentheelder): multiple nodes ...
 	kubeadmConfig, err := cc.provisionControlPlane(
@@ -170,7 +170,7 @@ func (c *Context) Create(cfg *config.Config, retain bool) error {
 	return nil
 }
 
-// Delete tears down a kubernetes-in-docker cluster
+// Delete tears down a kind cluster
 func (c *Context) Delete() error {
 	n, err := c.ListNodes()
 	if err != nil {
@@ -185,7 +185,7 @@ func (cc *createContext) provisionControlPlane(
 	nodeName string,
 ) (kubeadmConfigPath string, err error) {
 	cc.status.Start(fmt.Sprintf("[%s] Creating node container 📦", nodeName))
-	// create the "node" container (docker run, but it is paused, see createNode)
+	// create the "node" container (containerEngine run, but it is paused, see createNode)
 	node, port, err := nodes.CreateControlPlaneNode(nodeName, cc.config.Image, cc.ClusterLabel())
 	if err != nil {
 		return "", err
@@ -222,8 +222,8 @@ func (cc *createContext) provisionControlPlane(
 		return "", err
 	}
 
-	cc.status.Start(fmt.Sprintf("[%s] Waiting for docker to be ready 🐋", nodeName))
-	// wait for docker to be ready
+	cc.status.Start(fmt.Sprintf("[%s] Waiting for container engine to be ready 🐋", nodeName))
+	// wait for container engine to be ready
 	if !node.WaitForDocker(time.Now().Add(time.Second * 30)) {
 		// TODO(bentheelder): logging here
 		if !cc.retain {
@@ -232,7 +232,7 @@ func (cc *createContext) provisionControlPlane(
 		return "", fmt.Errorf("timed out waiting for docker to be ready on node")
 	}
 
-	// load the docker image artifacts into the docker daemon
+	// load the container image artifacts into the container storage
 	node.LoadImages()
 
 	// get installed kubernetes version from the node image

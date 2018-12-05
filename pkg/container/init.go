@@ -14,6 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package docker contains helpers for working with docker
+// Package container contains helpers for working with container engines
 // This package has no stability guarantees whatsoever!
-package docker
+package container
+
+import (
+	"sigs.k8s.io/kind/pkg/exec"
+)
+
+//Engine is the container engine to use to launch containers
+var Engine = ""
+
+const engines = []string{"podman", "docker"}
+
+func init() {
+	for _, engine := range engines {
+		if Engine, err := exec.LookPath(engine); err == nil {
+			return
+		}
+	}
+	Engine = "docker"
+}
